@@ -146,4 +146,80 @@ Thumbs.associate = async function ({ id, path, score }: NewFile): Promise<void> 
     }
 };
 
+Thumbs.migrate = async function (uuid: number, id: number): Promise<void> {
+    // Converts the draft thumb zset to the topic zset (combines thumbs if applicable)
+    const set = `draft:${uuid}:thumbs`;
+
+    // The next line calls a function in a module that has not been updated to TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    const thumbs: Thumb[] = await db.getSortedSetRangeWithScores(set, 0, -1);
+    await Promise.all(thumbs.map(async thumb => await Thumbs.associate({
+        id,
+        path: thumb.value,
+        score: thumb.score,
+    })));
+    await db.delete(set);
+    cache.del(set);
+};
+
+Thumbs.delete = async function (id: number, relativePaths: string | string[]): Promise<void> {
+    const isDraft: boolean = validator.isUUID(String(id));
+    const set = `${isDraft ? 'draft' : 'topic'}:${id}:thumbs`;
+
+    if (typeof relativePaths === 'string') {
+        relativePaths = [relativePaths];
+    } else if (!Array.isArray(relativePaths)) {
+        throw new Error('[[error:invalid-data]]');
+    }
+
+    const absolutePaths: string[] = relativePaths.map(relativePath => path.join((nconf.get('upload_path') as string), relativePath));
+    const [associated, existsOnDisk]: [boolean[], boolean[]] = await Promise.all([
+        (db.isSortedSetMembers(set, relativePaths) as boolean[]),
+        Promise.all(absolutePaths.map(async absolutePath => (file.exists(absolutePath) as boolean))),
+    ]);
+
+    const toRemove: string[] = [];
+    const toDelete: string[] = [];
+    relativePaths.forEach((relativePath: string, idx: number) => {
+        if (associated[idx]) {
+            toRemove.push(relativePath);
+        }
+
+        if (existsOnDisk[idx]) {
+            toDelete.push(absolutePaths[idx]);
+        }
+    });
+
+    // The next line calls a function in a module that has not been updated to TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    await db.sortedSetRemove(set, toRemove);
+
+    if (isDraft && toDelete.length) { // drafts only; post upload dissociation handles disk deletion for topics
+        await Promise.all(toDelete.map(async absolutePath => file.delete(absolutePath)));
+    }
+
+    if (toRemove.length && !isDraft) {
+        const mainPid : number = (await topics.getMainPids([id]) as number[])[0];
+
+        await Promise.all([
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            db.incrObjectFieldBy(`topic:${id}`, 'numThumbs', -toRemove.length),
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            Promise.all(toRemove.map(async relativePath => posts.uploads.dissociate(mainPid, relativePath.slice(1)))),
+        ]);
+    }
+};
+
+Thumbs.deleteAll = async function (id: number): Promise<void> {
+    const isDraft: boolean = validator.isUUID(String(id));
+    const set = `${isDraft ? 'draft' : 'topic'}:${id}:thumbs`;
+
+    // The next line calls a function in a module that has not been updated to TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    const thumbs: string | string[] = await db.getSortedSetRange(set, 0, -1);
+    await Thumbs.delete(id, thumbs);
+};
+
 export default Thumbs;
