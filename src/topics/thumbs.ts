@@ -63,6 +63,8 @@ Thumbs.exists = async function (id: number, path: string): Promise<boolean> {
 Thumbs.load = async function (topicData: T[]): Promise<(UserResponse[] | UserResponse)[]> {
     const topicsWithThumbs: T[] = topicData.filter(t => t && parseInt(t.numThumbs, 10) > 0);
     const tidsWithThumbs: number[] = topicsWithThumbs.map(t => t.tid);
+    // Cannot determine actual return type of Thumbs.get(...), since this function uses
+    // cache package to generate 'thumb' elements that are part of this returned value.
     const thumbs: UserResponse[] | UserResponse[][] = await Thumbs.get(tidsWithThumbs);
     const tidToThumbs : _.Dictionary<UserResponse> = _.zipObject(tidsWithThumbs, thumbs as UserResponse[]);
     return topicData.map(t => (t && t.tid ? (tidToThumbs[t.tid] || []) : []));
@@ -89,6 +91,9 @@ Thumbs.get = async function (tids: number[]): Promise<UserResponse[] | UserRespo
         singular = true;
     }
 
+    // Note sure how to fix "unsafe member access" since 'meta' is from another
+    // file in the NodeBB directory and not a variable explicitly defined in
+    // src/topics/thumbs.js.
     if (!meta.config.allowTopicsThumbnail || !tids.length) {
         return singular ? [] : tids.map(() => []);
     }
@@ -110,6 +115,35 @@ Thumbs.get = async function (tids: number[]): Promise<UserResponse[] | UserRespo
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
     ({ thumbs: response } = await plugins.hooks.fire('filter:topics.getThumbs', { tids, thumbs: response }));
     return singular ? response.pop() : response;
+};
+
+Thumbs.associate = async function ({ id, path, score }: NewFile): Promise<void> {
+    // Associates a newly uploaded file as a thumb to the passed-in draft or topic
+    const isDraft = validator.isUUID(String(id));
+    const isLocal = !path.startsWith('http');
+    const set = `${isDraft ? 'draft' : 'topic'}:${id}:thumbs`;
+    // Don't know how to fix unsafe assignment on next line 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    const numThumbs = await db.sortedSetCard(set);
+
+    // Normalize the path to allow for changes in upload_path (and so upload_url can be appended if needed)
+    if (isLocal) {
+        path = path.replace(nconf.get('upload_path'), '');
+    }
+    await db.sortedSetAdd(set, isFinite(score) ? score : numThumbs, path);
+    if (!isDraft) {
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        const numThumbs = await db.sortedSetCard(set);
+        await topics.setTopicField(id, 'numThumbs', numThumbs);
+    }
+    cache.del(set);
+
+    // Associate thumbnails with the main pid (only on local upload)
+    if (!isDraft && isLocal) {
+        const mainPid: number = (await topics.getMainPids([id]) as number[])[0];
+        await posts.uploads.associate(mainPid, path.slice(1));
+    }
 };
 
 export default Thumbs;
