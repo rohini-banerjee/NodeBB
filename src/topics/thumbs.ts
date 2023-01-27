@@ -37,16 +37,16 @@ type NewFile = {
 }
 
 type ThumbsType = {
-    exists: (id: number, path: string) => Promise<boolean>;
-    load: (topicData: T[]) => Promise<(UserResponse[] | UserResponse)[]>;
-    get: (tids: number[]) => Promise<UserResponse[] | UserResponse[][]>;
-    associate: ({ id, path, score }: NewFile) => Promise<void>;
-    migrate: (uuid: number, id: number) => Promise<void>;
-    delete: (id: number, relativePaths: string | string[]) => Promise<void>;
-    deleteAll: (id: number) => Promise<void>;
+    exists?: (id: number, path: string) => Promise<boolean>;
+    load?: (topicData: T[]) => Promise<(UserResponse[] | UserResponse)[]>;
+    get?: (tids: number[]) => Promise<UserResponse[] | UserResponse[][]>;
+    associate?: ({ id, path, score }: NewFile) => Promise<void>;
+    migrate?: (uuid: number, id: number) => Promise<void>;
+    delete?: (id: number, relativePaths: string | string[]) => Promise<void>;
+    deleteAll?: (id: number) => Promise<void>;
 };
 
-const Thumbs: ThumbsType | null = null;
+const Thumbs: ThumbsType = {};
 
 // Defining object methods
 

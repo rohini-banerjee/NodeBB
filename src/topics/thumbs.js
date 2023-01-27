@@ -14,7 +14,7 @@ const posts_1 = __importDefault(require("../posts"));
 const meta_1 = __importDefault(require("../meta"));
 const cache_1 = __importDefault(require("../cache"));
 const _1 = __importDefault(require("."));
-const Thumbs = null;
+const Thumbs = {};
 // Defining object methods
 Thumbs.exists = async function (id, path) {
     const isDraft = validator_1.default.isUUID(String(id));
