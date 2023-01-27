@@ -67,3 +67,49 @@ Thumbs.load = async function (topicData: T[]): Promise<(UserResponse[] | UserRes
     const tidToThumbs : _.Dictionary<UserResponse> = _.zipObject(tidsWithThumbs, thumbs as UserResponse[]);
     return topicData.map(t => (t && t.tid ? (tidToThumbs[t.tid] || []) : []));
 };
+
+async function getThumbs(set: string): Promise<string[]> {
+    const cached: string[] = cache.get(set);
+    if (cached !== undefined) {
+        return cached.slice();
+    }
+
+    // The next line calls a function in a module that has not been updated to TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    const thumbs: string[] = await db.getSortedSetRange(set, 0, -1);
+    cache.set(set, thumbs);
+    return thumbs.slice();
+}
+
+Thumbs.get = async function (tids: number[]): Promise<UserResponse[] | UserResponse[][]> {
+    // Allow singular or plural usage
+    let singular = false;
+    if (!Array.isArray(tids)) {
+        tids = [tids];
+        singular = true;
+    }
+
+    if (!meta.config.allowTopicsThumbnail || !tids.length) {
+        return singular ? [] : tids.map(() => []);
+    }
+
+    const hasTimestampPrefix = /^\d+-/;
+    const upload_url: string = (nconf.get('relative_path') as string) + (nconf.get('upload_url') as string);
+    const sets: string[] = tids.map(tid => `${validator.isUUID(String(tid)) ? 'draft' : 'topic'}:${tid}:thumbs`);
+    const thumbs: string[][] = await Promise.all(sets.map(getThumbs));
+    let response : UserResponse[][] = thumbs.map((thumbSet:string[], idx: number) => thumbSet.map(thumb => ({
+        id: tids[idx],
+        name: (() => {
+            const name: string = path.basename(thumb);
+            return hasTimestampPrefix.test(name) ? name.slice(14) : name;
+        })(),
+        url: thumb.startsWith('http') ? thumb : path.posix.join(upload_url, thumb),
+    })));
+
+    // The next line calls a function in a module that has not been updated to TS yet
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+    ({ thumbs: response } = await plugins.hooks.fire('filter:topics.getThumbs', { tids, thumbs: response }));
+    return singular ? response.pop() : response;
+};
+
+export default Thumbs;
