@@ -59,3 +59,11 @@ Thumbs.exists = async function (id: number, path: string): Promise<boolean> {
     return db.isSortedSetMember(set, path) as boolean;
 };
 
+
+Thumbs.load = async function (topicData: T[]): Promise<(UserResponse[] | UserResponse)[]> {
+    const topicsWithThumbs: T[] = topicData.filter(t => t && parseInt(t.numThumbs, 10) > 0);
+    const tidsWithThumbs: number[] = topicsWithThumbs.map(t => t.tid);
+    const thumbs: UserResponse[] | UserResponse[][] = await Thumbs.get(tidsWithThumbs);
+    const tidToThumbs : _.Dictionary<UserResponse> = _.zipObject(tidsWithThumbs, thumbs as UserResponse[]);
+    return topicData.map(t => (t && t.tid ? (tidToThumbs[t.tid] || []) : []));
+};
