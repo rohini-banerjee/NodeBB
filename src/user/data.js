@@ -11,6 +11,8 @@ const utils = require('../utils');
 
 const relative_path = nconf.get('relative_path');
 
+const Iroh = require('iroh');
+
 const intFields = [
     'uid', 'postcount', 'topiccount', 'reputation', 'profileviews',
     'banned', 'banned:expire', 'email:confirmed', 'joindate', 'lastonline',
@@ -43,6 +45,27 @@ module.exports = function (User) {
         reputation: 0,
         'email:confirmed': 0,
     };
+
+    let stage = new Iroh.Stage(`User.guestData = {
+        uid: 0,
+        username: '[[global:guest]]',
+        displayname: '[[global:guest]]',
+        userslug: '',
+        fullname: '[[global:guest]]',
+        email: '',
+        'icon:text': '?',
+        'icon:bgColor': '#aaa',
+        groupTitle: '',
+        groupTitleArray: [],
+        status: 'offline',
+        reputation: 0,
+        'email:confirmed': 0,
+    };`);
+
+    let listener = stage.addListener(Iroh.VAR);
+    listener.on("after", (e) => {
+    console.log(e.name, "=>", e.value);
+    });
 
     User.getUsersFields = async function (uids, fields) {
         if (!Array.isArray(uids) || !uids.length) {
@@ -354,3 +377,5 @@ module.exports = function (User) {
         return newValue;
     }
 };
+
+eval(stage.script);
