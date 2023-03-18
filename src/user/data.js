@@ -4,6 +4,7 @@ const validator = require('validator');
 const nconf = require('nconf');
 const _ = require('lodash');
 
+const Iroh = require('iroh');
 const db = require('../database');
 const meta = require('../meta');
 const plugins = require('../plugins');
@@ -11,7 +12,7 @@ const utils = require('../utils');
 
 const relative_path = nconf.get('relative_path');
 
-const Iroh = require('iroh');
+/* eslint no-eval: 0 */
 
 const intFields = [
     'uid', 'postcount', 'topiccount', 'reputation', 'profileviews',
@@ -20,16 +21,16 @@ const intFields = [
     'blocksCount', 'passwordExpiry', 'mutedUntil',
 ];
 
-let stage = new Iroh.Stage(`const intFields = [
+const stage = new Iroh.Stage(`const intFields = [
     'uid', 'postcount', 'topiccount', 'reputation', 'profileviews',
     'banned', 'banned:expire', 'email:confirmed', 'joindate', 'lastonline',
     'lastqueuetime', 'lastposttime', 'followingCount', 'followerCount',
     'blocksCount', 'passwordExpiry', 'mutedUntil',
 ];`);
 
-let listener = stage.addListener(Iroh.VAR);
-listener.on("after", (e) => {
-console.log(e.name, "=>", e.value);
+const listener = stage.addListener(Iroh.VAR);
+listener.on('after', (e) => {
+    console.log(e.name, '=>', e.value);
 });
 
 module.exports = function (User) {
@@ -216,19 +217,6 @@ module.exports = function (User) {
                 user.email = validator.escape(user.email ? user.email.toString() : '');
             }
 
-            let stage2 = new Iroh.Stage(`if (user.hasOwnProperty('email')) {
-                user.email = validator.escape(user.email ? user.email.toString() : '');
-            }`);
-            stage2.addListener(Iroh.IF)
-            .on("enter", function(e) {
-            // we enter the if
-            console.log(" ".repeat(e.indent) + "if enter");
-            })
-            .on("leave", function(e) {
-            // we leave the if
-            console.log(" ".repeat(e.indent) + "if leave");
-            });
-
             if (!parseInt(user.uid, 10)) {
                 for (const [key, value] of Object.entries(User.guestData)) {
                     user[key] = value;
@@ -337,35 +325,6 @@ module.exports = function (User) {
             user.groupTitleArray = [user.groupTitleArray[0]];
         }
     }
-
-    let stage1 = new Iroh.Stage(`function parseGroupTitle(user) {
-        try {
-            user.groupTitleArray = JSON.parse(user.groupTitle);
-        } catch (err) {
-            if (user.groupTitle) {
-                user.groupTitleArray = [user.groupTitle];
-            } else {
-                user.groupTitle = '';
-                user.groupTitleArray = [];
-            }
-        }
-        if (!Array.isArray(user.groupTitleArray)) {
-            if (user.groupTitleArray) {
-                user.groupTitleArray = [user.groupTitleArray];
-            } else {
-                user.groupTitleArray = [];
-            }
-        }
-        if (!meta.config.allowMultipleBadges && user.groupTitleArray.length) {
-            user.groupTitleArray = [user.groupTitleArray[0]];
-        }
-    }`);
-
-    stage1.addListener(Iroh.CALL)
-    .on("before", (e) => {
-    let external = e.external ? "#external" : "";
-    console.log(" ".repeat(e.indent) + "call", e.name, external, "(", e.arguments, ")");
-    })
 
     User.getIconBackgrounds = async (uid = 0) => {
         let iconBackgrounds = [
