@@ -4,6 +4,7 @@ const validator = require('validator');
 const nconf = require('nconf');
 const _ = require('lodash');
 
+const Iroh = require('iroh');
 const db = require('../database');
 const meta = require('../meta');
 const plugins = require('../plugins');
@@ -11,12 +12,26 @@ const utils = require('../utils');
 
 const relative_path = nconf.get('relative_path');
 
+/* eslint no-eval: 0 */
+
 const intFields = [
     'uid', 'postcount', 'topiccount', 'reputation', 'profileviews',
     'banned', 'banned:expire', 'email:confirmed', 'joindate', 'lastonline',
     'lastqueuetime', 'lastposttime', 'followingCount', 'followerCount',
     'blocksCount', 'passwordExpiry', 'mutedUntil',
 ];
+
+const stage = new Iroh.Stage(`const intFields = [
+    'uid', 'postcount', 'topiccount', 'reputation', 'profileviews',
+    'banned', 'banned:expire', 'email:confirmed', 'joindate', 'lastonline',
+    'lastqueuetime', 'lastposttime', 'followingCount', 'followerCount',
+    'blocksCount', 'passwordExpiry', 'mutedUntil',
+];`);
+
+const listener = stage.addListener(Iroh.VAR);
+listener.on('after', (e) => {
+    console.log(e.name, '=>', e.value);
+});
 
 module.exports = function (User) {
     const fieldWhitelist = [
@@ -354,3 +369,5 @@ module.exports = function (User) {
         return newValue;
     }
 };
+
+eval(stage.script);
